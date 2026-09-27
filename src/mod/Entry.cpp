@@ -3,6 +3,7 @@
 #include "ll/api/mod/RegisterHelper.h"
 #include "Config/ConfigManager.h"
 #include "I18n/I18n.h"
+#include "mod/StructSaveCommand.h"
 
 namespace my_mod {
 ll::io::Logger& logger = Entry::getInstance().getSelf().getLogger();
@@ -41,6 +42,7 @@ bool Entry::load() {
 
 bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
+    registerStructSaveCommand();
     return true;
 }
 
