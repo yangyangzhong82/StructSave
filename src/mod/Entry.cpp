@@ -43,6 +43,7 @@ bool Entry::load() {
 bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
     registerStructSaveCommand();
+    registerStructPlaceCommand();
     return true;
 }
 
