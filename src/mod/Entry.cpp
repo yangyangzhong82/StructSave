@@ -44,6 +44,9 @@ bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
     registerStructSaveCommand();
     registerStructPlaceCommand();
+    registerStructLoadCommand();
+    registerStructDeleteCommand();
+    registerStructExportCommand();
     return true;
 }
 

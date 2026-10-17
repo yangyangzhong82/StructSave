@@ -23,7 +23,7 @@ option("target_type")
     set_values("server", "client")
 option_end()
 
-target("my-mod") 
+target("Struct") 
     add_rules("@levibuildscript/linkrule")
     add_rules("@levibuildscript/modpacker")
     add_cxflags( "/EHa", "/utf-8", "/W4", "/w44265", "/w44289", "/w44296", "/w45263", "/w44738", "/w45204")
@@ -47,9 +47,10 @@ target("my-mod")
     end
     after_build(function (target)
         local lang_src = path.join(os.projectdir(), "lang")
-        local lang_dst = path.join(os.projectdir(), "bin", target:name())
+        local lang_dst = path.join(os.projectdir(), "bin", target:name(), "lang")
         if os.isdir(lang_src) then
-            os.cp(lang_src, lang_dst)
+            os.mkdir(lang_dst)
+            os.cp(path.join(lang_src, "*.json"), lang_dst)
             print("Copied lang folder to " .. lang_dst)
         end
     end)
