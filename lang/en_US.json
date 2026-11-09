@@ -13,6 +13,8 @@
     "structure.export.success": "Exported structure from {}, name {}, to: {}",
     "structure.export.write_failed": "Failed to write structure file: {}",
     "structure.export.failed": "Failed to export structure: {}",
+    "structure.list.header": "Structures in {} ({} total):",
+    "structure.list.failed": "Failed to list structures: {}",
     "structure.place.no_dimension": "No dimension found for command origin",
     "structure.place.nothing_selected": "Select blocks or entities to place",
     "structure.place.not_found": "Structure file not found: {}",

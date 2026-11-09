@@ -13,6 +13,8 @@
     "structure.export.success": "已将{}中的结构 {} 导出到: {}",
     "structure.export.write_failed": "无法写入结构文件: {}",
     "structure.export.failed": "导出结构失败: {}",
+    "structure.list.header": "{}中的结构（共 {} 个）:",
+    "structure.list.failed": "列出结构失败: {}",
     "structure.place.no_dimension": "无法获取命令执行位置所在的维度",
     "structure.place.nothing_selected": "请至少选择放置方块或实体",
     "structure.place.not_found": "找不到结构文件: {}",

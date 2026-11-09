@@ -6,4 +6,5 @@ void registerStructPlaceCommand();
 void registerStructLoadCommand();
 void registerStructDeleteCommand();
 void registerStructExportCommand();
+void registerStructListCommand();
 }

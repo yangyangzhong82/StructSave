@@ -31,6 +31,7 @@
 #include <shared_mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace my_mod {
 
@@ -53,21 +54,99 @@ struct StructPlaceParam {
 enum class StructureStorage { memory, disk };
 
 struct StructLoadParam {
-    std::string name;
+    std::string      name;
     StructureStorage storage{StructureStorage::memory};
-    std::string structureName;
+    std::string      structureName;
 };
 
 struct StructDeleteParam {
-    std::string name;
+    std::string      name;
     StructureStorage storage;
 };
 
 struct StructExportParam {
-    std::string name;
+    std::string      name;
     StructureStorage storage;
-    std::string fileName;
+    std::string      fileName;
 };
+
+struct StructListParam {
+    StructureStorage storage;
+};
+
+std::filesystem::path              buildStructurePath(std::string_view name);
+std::unique_ptr<StructureTemplate> loadDiskStructure(Level& level, std::string const& name);
+
+bool hasOwnStructureFile(std::string_view name) {
+    if (std::filesystem::is_regular_file(buildStructurePath(name))) {
+        return true;
+    }
+    auto separator = name.find(':');
+    return separator != std::string_view::npos
+        && std::filesystem::is_regular_file(buildStructurePath(name.substr(separator + 1)));
+}
+
+bool isOwnStructure(std::string_view name) {
+    constexpr std::string_view vanillaNamespace = "minecraft:";
+    return name.rfind(vanillaNamespace, 0) != 0 && hasOwnStructureFile(name);
+}
+
+void listStructures(CommandOrigin const& origin, CommandOutput& output, bool memory, bool disk) {
+    auto* level = origin.getLevel();
+    if (!level) {
+        output.error(tr("structure.load.no_level"));
+        return;
+    }
+    try {
+        auto manager    = level->getStructureManager();
+        auto printNames = [&](StructureStorage storage, std::vector<std::string> names) {
+            std::sort(names.begin(), names.end());
+            names.erase(std::unique(names.begin(), names.end()), names.end());
+            output.success(
+                tr("structure.list.header",
+                   tr(storage == StructureStorage::memory ? "structure.storage.memory" : "structure.storage.disk"),
+                   names.size())
+            );
+            for (auto const& name : names) {
+                output.success(name);
+            }
+        };
+        if (memory) {
+            std::vector<std::string> names;
+            {
+                std::shared_lock lock{*manager->mRepositoryMutex};
+                for (auto const& entry : *manager->mStructureRepository) {
+                    if (isOwnStructure(entry.first) || entry.first.rfind("mystructure:", 0) == 0) {
+                        names.push_back(entry.first);
+                    }
+                }
+            }
+            printNames(StructureStorage::memory, std::move(names));
+        }
+        if (disk) {
+            auto names = manager->getStructureNames(level->getLevelStorage(), false);
+            names.erase(
+                std::remove_if(
+                    names.begin(),
+                    names.end(),
+                    [&](std::string const& name) {
+                        if (name.rfind("minecraft:", 0) == 0
+                            || (!hasOwnStructureFile(name) && name.rfind("mystructure:", 0) != 0)) {
+                            return true;
+                        }
+                        // getStructureNames also returns cached memory-only structures. Read the
+                        // world storage directly so they are not reported as disk structures.
+                        return loadDiskStructure(*level, name) == nullptr;
+                    }
+                ),
+                names.end()
+            );
+            printNames(StructureStorage::disk, std::move(names));
+        }
+    } catch (std::exception const& e) {
+        output.error(tr("structure.list.failed", e.what()));
+    }
+}
 
 std::string fullStructureName(std::string name) {
     if (name.find(':') == std::string::npos) {
@@ -81,7 +160,7 @@ std::string storageLabel(StructureStorage storage) {
 }
 
 std::unique_ptr<StructureTemplate> loadDiskStructure(Level& level, std::string const& name) {
-    auto manager = level.getStructureManager();
+    auto manager   = level.getStructureManager();
     auto structure = std::make_unique<StructureTemplate>(name, *manager->mUnknownBlockRegistry);
     // Load directly from the world, without reading the memory cache or resource packs.
     if (!manager->load(*structure, nullptr, &level.getLevelStorage())) {
@@ -108,9 +187,9 @@ std::string sanitizeName(std::string_view raw) {
 }
 
 std::filesystem::path buildStructurePath(std::string_view name) {
-    auto base  = Entry::getInstance().getSelf().getDataDir();
-    base      /= "structures";
-    auto fileName = sanitizeName(name);
+    auto base      = Entry::getInstance().getSelf().getDataDir();
+    base          /= "structures";
+    auto fileName  = sanitizeName(name);
     if (!fileName.ends_with(".mcstructure")) {
         fileName += ".mcstructure";
     }
@@ -120,8 +199,11 @@ std::filesystem::path buildStructurePath(std::string_view name) {
 } // namespace
 
 void registerStructSaveCommand() {
-    auto& cmd = ll::command::CommandRegistrar::getInstance(false)
-                    .getOrCreateCommand("structsave", "Save a selected region to mcstructure", CommandPermissionLevel::Any);
+    auto& cmd = ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(
+        "structsave",
+        "Save a selected region to mcstructure",
+        CommandPermissionLevel::Any
+    );
     cmd.alias("ssave");
 
     cmd.overload<StructSaveParam>()
@@ -187,8 +269,11 @@ void registerStructSaveCommand() {
 }
 
 void registerStructPlaceCommand() {
-    auto& command = ll::command::CommandRegistrar::getInstance(false)
-                        .getOrCreateCommand("structplace", "Place a saved mcstructure structure", CommandPermissionLevel::Any);
+    auto& command = ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(
+        "structplace",
+        "Place a saved mcstructure structure",
+        CommandPermissionLevel::GameDirectors
+    );
     command.alias("splace");
 
     command.overload<StructPlaceParam>()
@@ -277,8 +362,11 @@ void registerStructPlaceCommand() {
 }
 
 void registerStructLoadCommand() {
-    auto& command = ll::command::CommandRegistrar::getInstance(false)
-                        .getOrCreateCommand("structload", "Import a mcstructure file into memory or the world", CommandPermissionLevel::Any);
+    auto& command = ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(
+        "structload",
+        "Import a mcstructure file into memory or the world",
+        CommandPermissionLevel::GameDirectors
+    );
     command.alias("sload");
 
     command.overload<StructLoadParam>()
@@ -333,7 +421,9 @@ void registerStructLoadCommand() {
                 }
                 // Refresh the cache as well, so structure blocks see disk imports immediately.
                 manager->getOrCreate(name) = std::move(*structure);
-                output.success(tr("structure.load.success", path.filename().string(), storageLabel(param.storage), name));
+                output.success(
+                    tr("structure.load.success", path.filename().string(), storageLabel(param.storage), name)
+                );
             } catch (std::exception const& e) {
                 output.error(tr("structure.load.failed", e.what()));
             }
@@ -341,23 +431,24 @@ void registerStructLoadCommand() {
 }
 
 void registerStructDeleteCommand() {
-    auto& command = ll::command::CommandRegistrar::getInstance(false)
-                        .getOrCreateCommand("structdelete", "Delete a structure from memory or the world", CommandPermissionLevel::Any);
+    auto& command = ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(
+        "structdelete",
+        "Delete a structure from memory or the world",
+        CommandPermissionLevel::GameDirectors
+    );
     command.alias("sdelete");
 
-    command.overload<StructDeleteParam>()
-        .required("name")
-        .required("storage")
-        .execute([](CommandOrigin const& origin, CommandOutput& output, StructDeleteParam const& param) {
+    command.overload<StructDeleteParam>().required("name").required("storage").execute(
+        [](CommandOrigin const& origin, CommandOutput& output, StructDeleteParam const& param) {
             auto* level = origin.getLevel();
             if (!level) {
                 output.error(tr("structure.load.no_level"));
                 return;
             }
             try {
-                auto name = fullStructureName(param.name);
-                auto manager = level->getStructureManager();
-                bool deleted = false;
+                auto name            = fullStructureName(param.name);
+                auto manager         = level->getStructureManager();
+                bool deleted         = false;
                 bool diskCopyRemains = false;
                 if (param.storage == StructureStorage::memory) {
                     diskCopyRemains = loadDiskStructure(*level, name) != nullptr;
@@ -368,7 +459,8 @@ void registerStructDeleteCommand() {
                         output.error(tr("structure.storage.not_found", storageLabel(param.storage), name));
                         return;
                     }
-                    deleted = manager->deleteStructure(name, level->getLevelStorage()) == StructureDeleteResult::Success;
+                    deleted =
+                        manager->deleteStructure(name, level->getLevelStorage()) == StructureDeleteResult::Success;
                     if (deleted) {
                         // Do not leave a cached copy available to structure blocks after disk deletion.
                         std::unique_lock lock{*manager->mRepositoryMutex};
@@ -389,12 +481,38 @@ void registerStructDeleteCommand() {
             } catch (std::exception const& e) {
                 output.error(tr("structure.delete.failed", e.what()));
             }
-        });
+        }
+    );
+}
+
+void registerStructListCommand() {
+    auto& command = ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(
+        "structlist",
+        "List memory and world structure names",
+        CommandPermissionLevel::GameDirectors
+    );
+    command.alias("slist");
+    command.overload().execute([](CommandOrigin const& origin, CommandOutput& output) {
+        listStructures(origin, output, true, true);
+    });
+    command.overload<StructListParam>().required("storage").execute(
+        [](CommandOrigin const& origin, CommandOutput& output, StructListParam const& param) {
+            listStructures(
+                origin,
+                output,
+                param.storage == StructureStorage::memory,
+                param.storage == StructureStorage::disk
+            );
+        }
+    );
 }
 
 void registerStructExportCommand() {
-    auto& command = ll::command::CommandRegistrar::getInstance(false)
-                        .getOrCreateCommand("structexport", "Export a memory or world structure to mcstructure", CommandPermissionLevel::Any);
+    auto& command = ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(
+        "structexport",
+        "Export a memory or world structure to mcstructure",
+        CommandPermissionLevel::GameDirectors
+    );
     command.alias("sexport");
 
     command.overload<StructExportParam>()
@@ -408,12 +526,12 @@ void registerStructExportCommand() {
                 return;
             }
             try {
-                auto name = fullStructureName(param.name);
+                auto                         name = fullStructureName(param.name);
                 std::unique_ptr<CompoundTag> tag;
                 if (param.storage == StructureStorage::memory) {
-                    auto manager = level->getStructureManager();
+                    auto             manager = level->getStructureManager();
                     std::shared_lock lock{*manager->mRepositoryMutex};
-                    auto it = manager->mStructureRepository->find(name);
+                    auto             it = manager->mStructureRepository->find(name);
                     if (it != manager->mStructureRepository->end()) {
                         tag = it->second->save();
                     }
@@ -428,7 +546,7 @@ void registerStructExportCommand() {
                     return;
                 }
 
-                auto path = buildStructurePath(param.fileName.empty() ? name : param.fileName);
+                auto path   = buildStructurePath(param.fileName.empty() ? name : param.fileName);
                 auto binary = tag->toBinaryNbt(true);
                 std::filesystem::create_directories(path.parent_path());
                 std::ofstream out(path, std::ios::binary | std::ios::trunc);

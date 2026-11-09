@@ -47,6 +47,7 @@ bool Entry::enable() {
     registerStructLoadCommand();
     registerStructDeleteCommand();
     registerStructExportCommand();
+    registerStructListCommand();
     return true;
 }
 
